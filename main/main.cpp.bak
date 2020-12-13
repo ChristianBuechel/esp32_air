@@ -1,0 +1,100 @@
+/* Air sensors
+*/
+
+#include "hdc1080.h"
+#include "SerialCommand.h"
+#include "uart.h"
+
+#define SDA_PIN GPIO_NUM_26
+#define SCL_PIN GPIO_NUM_27
+
+#define I2C_ADR 0x40
+
+#define TAG "MAIN"
+
+extern "C"
+{
+	void app_main();
+}
+
+template <class T>
+T check_range(T value, T min, T max)
+{
+	if (value < min)
+		return min;
+	if (value > max)
+		return max;
+	return value;
+}
+
+
+bool is_diff(int32_t a, int32_t b, int32_t range)
+{
+	return (a/range) != (b/range);
+}
+
+
+
+SerialCommand myCMD; // The  SerialCommand object
+
+
+void unrecognized(const char *command)
+{
+	char *arg;
+	arg = myCMD.next(); // Get the next argument from the SerialCommand object buffer
+	if (arg != NULL)	// As long as it existed, take it
+	{
+		sprintf(tmp_buff, "> %s;%s", command,arg); //CAVE only upcase letters in fonts ...
+	    ESP_LOGI(TAG, "> %s;%s", command,arg);
+	}
+	else
+	{
+		sprintf(tmp_buff, "> %s", command); //CAVE only upcase letters in fonts ...
+	    ESP_LOGI(TAG, "> %s", command);
+	}
+	print_window(tmp_buff, 9, 0);
+}
+
+
+void process_PWR()
+{
+	char *arg;
+	int32_t d = 0;		// between 0 and 100%
+	arg = myCMD.next(); // Get the next argument from the SerialCommand object buffer
+	if (arg != NULL)	// As long as it existed, take it
+	{
+		d = atol(arg);
+		t_pwr = check_range(d, (int32_t)0, (int32_t)RATIO_M);
+		ESP_LOGI(TAG, "Set ICC to %d%%", t_pwr);
+		confirm_pwr();
+	}
+}
+
+
+void app_main()
+{
+	esp_log_level_set("*", ESP_LOG_NONE); //can be changed using UART cmd LOG;0 or 1
+
+	//setup hdc1080
+	hdc1080_event_t hdc1080ev;
+	QueueHandle_t hdc1080_queue = hdc1080_init(); //init with GPIOs would be nice
+
+	//initialite UART
+	uart_init();
+	myCMD.setDefaultHandler(unrecognized);	//
+	myCMD.addCommand("PWR", process_PWR);	//
+	myCMD.clearBuffer();
+
+
+	while (1) //main loop
+	{
+
+		myCMD.readSerial();
+		if (xQueueReceive(hdc1080_queue, &hdc1080ev, 0)) //do not wait
+		{
+			
+		}
+
+		vTaskDelay(10 / portTICK_RATE_MS); //
+	}
+}
